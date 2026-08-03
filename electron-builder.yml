@@ -34,3 +34,6 @@ publish:
   provider: github
   owner: trendlinepros-afk
   repo: screenshot-tool
+  # Publish a real release (not a draft) so /releases/latest and the in-app
+  # updater can see it immediately.
+  releaseType: release
