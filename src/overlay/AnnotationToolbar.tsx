@@ -64,11 +64,13 @@ export function AnnotationToolbar({
   const BAR_W = 36;
   const BAR_H = TOOL_ORDER.length * 32 + 2 * 32 + 12;
 
-  // vertical bar on the right edge of the selection; flip inside if no room
+  // vertical bar on the right edge of the selection, aligned to the bottom
+  // corner; flip inside if there's no room to the right
   let left = selection.x + selection.width + 8;
   if (left + BAR_W > window.innerWidth) left = selection.x + selection.width - BAR_W - 8;
-  let top = selection.y;
-  if (top + BAR_H > window.innerHeight) top = Math.max(4, window.innerHeight - BAR_H - 4);
+  let top = selection.y + selection.height - BAR_H;
+  if (top + BAR_H > window.innerHeight - 4) top = window.innerHeight - BAR_H - 4;
+  if (top < 4) top = 4;
 
   return (
     <div

@@ -1,9 +1,9 @@
-export type CaptureMode = 'screenshot' | 'record';
-
 export interface AppSettings {
   autoSaveFolder: string | null;
+  /** Also copy to the clipboard whenever a screenshot is auto-saved. */
+  autoSaveAlsoCopy: boolean;
+  /** One hotkey: opens capture, and stops an in-progress recording. */
   hotkeyScreenshot: string;
-  hotkeyVideo: string;
   imageFormat: 'png' | 'jpg';
   jpgQuality: number;
   videoFps: number;
@@ -14,13 +14,13 @@ export interface AppSettings {
 
 /** Sent to the overlay window when a capture session starts. */
 export interface OverlayInit {
-  mode: CaptureMode;
   displayId: number;
-  /** Data URL of the frozen screen image at full physical resolution. */
-  imageDataUrl: string;
+  /** Raw BGRA pixels of the frozen screen at full physical resolution. */
+  bitmap: Uint8Array;
+  bitmapWidth: number;
+  bitmapHeight: number;
   /** Display bounds in CSS (device-independent) pixels. */
   bounds: { x: number; y: number; width: number; height: number };
-  scaleFactor: number;
 }
 
 export interface RegionRect {
@@ -70,6 +70,7 @@ export interface ZirtolaApi {
 
   // recorder control window
   onRecorderInit(cb: (init: RecorderInit) => void): () => void;
+  onRecorderStop(cb: () => void): () => void;
   saveRecording(buffer: ArrayBuffer): Promise<string | null>;
   recordingClosed(): void;
 
@@ -77,7 +78,7 @@ export interface ZirtolaApi {
   getSettings(): Promise<AppSettings>;
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   pickFolder(): Promise<string | null>;
-  validateHotkey(accelerator: string, kind: 'screenshot' | 'video'): Promise<HotkeyValidation>;
+  validateHotkey(accelerator: string): Promise<HotkeyValidation>;
   getVersion(): Promise<string>;
   checkForUpdates(): Promise<void>;
   getLastUpdateStatus(): Promise<UpdateCheckResult | null>;

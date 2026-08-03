@@ -54,7 +54,8 @@ export function Overlay() {
 
   const dragRef = useRef<Drag | null>(null);
   const liveShapeRef = useRef<Shape | null>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  /** Visible canvas holding the frozen screen at full physical resolution. */
+  const screenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stateRef = useRef({ selection, shapes, tool, color, init, editingText, busy });
   stateRef.current = { selection, shapes, tool, color, init, editingText, busy };
@@ -71,11 +72,29 @@ export function Overlay() {
       setDragKind(null);
       dragRef.current = null;
       liveShapeRef.current = null;
-      const img = new Image();
-      img.src = data.imageDataUrl;
-      imageRef.current = img;
     });
   }, []);
+
+  // Blit the raw BGRA bitmap straight onto the screen canvas — no image
+  // decode step, which is what keeps the overlay fast.
+  useEffect(() => {
+    const canvas = screenCanvasRef.current;
+    if (!init || !canvas) return;
+    const { bitmapWidth: w, bitmapHeight: h } = init;
+    canvas.width = w;
+    canvas.height = h;
+    // Uint32 views need 4-byte alignment; IPC buffers may not provide it.
+    const bytes = init.bitmap.byteOffset % 4 === 0 ? init.bitmap : new Uint8Array(init.bitmap);
+    const src = new Uint32Array(bytes.buffer, bytes.byteOffset, w * h);
+    const out = new Uint32Array(w * h);
+    for (let i = 0; i < out.length; i++) {
+      // BGRA -> RGBA (little-endian uint32: 0xAARRGGBB -> 0xAABBGGRR)
+      const v = src[i];
+      out[i] = (v & 0xff00ff00) | ((v >> 16) & 0xff) | ((v & 0xff) << 16);
+    }
+    const ctx = canvas.getContext('2d')!;
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(out.buffer), w, h), 0, 0);
+  }, [init]);
 
   // ---- annotation canvas redraw ------------------------------------------
   const redraw = useCallback(() => {
@@ -111,17 +130,19 @@ export function Overlay() {
     (format: 'png' | 'jpg', quality: number, extra?: Shape | null): string | null => {
       const { selection: sel, shapes: base, init: cfg } = stateRef.current;
       const shs = extra ? [...base, extra] : base;
-      const img = imageRef.current;
-      if (!sel || !cfg || !img || sel.width < 1 || sel.height < 1) return null;
-      const scale = cfg.scaleFactor;
+      const screen = screenCanvasRef.current;
+      if (!sel || !cfg || !screen || sel.width < 1 || sel.height < 1) return null;
+      // Map CSS pixels to bitmap pixels using the actual bitmap size.
+      const kx = cfg.bitmapWidth / cfg.bounds.width;
+      const ky = cfg.bitmapHeight / cfg.bounds.height;
       const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(sel.width * scale));
-      canvas.height = Math.max(1, Math.round(sel.height * scale));
+      canvas.width = Math.max(1, Math.round(sel.width * kx));
+      canvas.height = Math.max(1, Math.round(sel.height * ky));
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(
-        img,
-        Math.round(sel.x * scale),
-        Math.round(sel.y * scale),
+        screen,
+        Math.round(sel.x * kx),
+        Math.round(sel.y * ky),
         canvas.width,
         canvas.height,
         0,
@@ -129,7 +150,7 @@ export function Overlay() {
         canvas.width,
         canvas.height
       );
-      ctx.scale(scale, scale);
+      ctx.scale(kx, ky);
       ctx.translate(-sel.x, -sel.y);
       for (const s of shs) drawShape(ctx, s);
       return format === 'jpg'
@@ -201,9 +222,8 @@ export function Overlay() {
       }
       if ((e.key === 'c' && e.ctrlKey) || e.key === 'Enter') {
         e.preventDefault();
-        if (!stateRef.current.selection) return;
-        if (cfg?.mode === 'record') doStartRecording();
-        else doCopy();
+        if (!stateRef.current.selection || !cfg) return;
+        doCopy();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -330,16 +350,17 @@ export function Overlay() {
     };
   }, [redraw]);
 
-  if (!init) return <div className="h-full w-full bg-neutral-900" />;
-
   const sel = selection;
-  const scale = init.scaleFactor;
+  const kx = init ? init.bitmapWidth / init.bounds.width : 1;
+  const ky = init ? init.bitmapHeight / init.bounds.height : 1;
   const badge =
     sel && sel.width > 0
-      ? `${Math.round(sel.width * scale)}×${Math.round(sel.height * scale)}`
+      ? `${Math.round(sel.width * kx)}×${Math.round(sel.height * ky)}`
       : null;
 
   const cursor = tool && sel ? 'crosshair' : sel ? 'default' : 'crosshair';
+
+  if (!init) return <div className="h-full w-full bg-neutral-900" />;
 
   return (
     <div
@@ -347,43 +368,37 @@ export function Overlay() {
       style={{ cursor }}
       onMouseDown={onMouseDown}
     >
-      {/* frozen screen, dimmed */}
-      <img
-        src={init.imageDataUrl}
-        alt=""
-        draggable={false}
-        className="absolute inset-0 h-full w-full"
-        style={{ filter: 'brightness(0.45)' }}
-      />
+      {/* frozen screen at full brightness; the dim layer sits on top */}
+      <canvas ref={screenCanvasRef} className="absolute inset-0 h-full w-full" />
+
+      {/* dim everything except the selection (box-shadow cutout) */}
+      {sel ? (
+        <div
+          className="absolute"
+          style={{
+            cursor: tool ? 'crosshair' : 'move',
+            left: sel.x,
+            top: sel.y,
+            width: sel.width,
+            height: sel.height,
+            boxShadow: '0 0 0 100000px rgba(0,0,0,0.55)',
+          }}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-black/55" />
+      )}
 
       {sel && (
-        <>
-          {/* full-brightness crop of the frozen screen */}
-          <div
-            className="absolute overflow-hidden"
-            style={{
-              cursor: tool ? 'crosshair' : 'move',
-              left: sel.x,
-              top: sel.y,
-              width: sel.width,
-              height: sel.height,
-              backgroundImage: `url(${init.imageDataUrl})`,
-              backgroundSize: `${window.innerWidth}px ${window.innerHeight}px`,
-              backgroundPosition: `${-sel.x}px ${-sel.y}px`,
-            }}
-          />
-          {/* selection border */}
-          <div
-            className="pointer-events-none absolute border border-brand"
-            style={{
-              left: sel.x - 1,
-              top: sel.y - 1,
-              width: sel.width + 2,
-              height: sel.height + 2,
-              boxShadow: '0 0 0 1px rgba(255,255,255,0.35)',
-            }}
-          />
-        </>
+        <div
+          className="pointer-events-none absolute border border-brand"
+          style={{
+            left: sel.x - 1,
+            top: sel.y - 1,
+            width: sel.width + 2,
+            height: sel.height + 2,
+            boxShadow: '0 0 0 1px rgba(255,255,255,0.35)',
+          }}
+        />
       )}
 
       {/* annotation layer */}
@@ -447,7 +462,7 @@ export function Overlay() {
         />
       )}
 
-      {sel && sel.width >= 4 && dragKind !== 'geometry' && init.mode === 'screenshot' && (
+      {sel && sel.width >= 4 && dragKind !== 'geometry' && (
         <AnnotationToolbar
           selection={sel}
           tool={tool}
@@ -461,7 +476,6 @@ export function Overlay() {
       {sel && sel.width >= 4 && dragKind !== 'geometry' && (
         <ActionBar
           selection={sel}
-          mode={init.mode}
           busy={busy}
           onCopy={doCopy}
           onSave={doSave}
@@ -472,9 +486,7 @@ export function Overlay() {
 
       {!sel && (
         <div className="pointer-events-none absolute left-1/2 top-6 -translate-x-1/2 rounded-full bg-neutral-900/80 px-4 py-1.5 text-sm text-neutral-200 shadow">
-          {init.mode === 'record'
-            ? 'Drag to choose the recording region — Esc to cancel'
-            : 'Drag to select a region — Ctrl+C to copy, Esc to cancel'}
+          Drag to select a region — Ctrl+C to copy, Esc to cancel
         </div>
       )}
     </div>

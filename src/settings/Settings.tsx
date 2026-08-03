@@ -23,18 +23,21 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  // The knob needs an explicit `left-0.5` anchor: without it, the button's
+  // default content centering positions the knob mid-track, so both states
+  // looked "on the right".
   return (
     <button
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 rounded-full transition-colors ${
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
         checked ? 'bg-brand' : 'bg-neutral-700'
       }`}
     >
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-          checked ? 'translate-x-4' : 'translate-x-0.5'
+        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+          checked ? 'translate-x-4' : 'translate-x-0'
         }`}
       />
     </button>
@@ -107,6 +110,16 @@ export function Settings() {
             )}
           </div>
         </Row>
+        {settings.autoSaveFolder && (
+          <Row label="Also copy to clipboard when auto-saving">
+            <input
+              type="checkbox"
+              checked={settings.autoSaveAlsoCopy}
+              onChange={(e) => patch({ autoSaveAlsoCopy: e.target.checked })}
+              className="h-4 w-4 accent-brand"
+            />
+          </Row>
+        )}
         <Row label="Image format">
           <div className="flex items-center gap-2">
             {(['png', 'jpg'] as const).map((fmt) => (
@@ -138,21 +151,17 @@ export function Settings() {
         )}
       </Section>
 
-      <Section title="Hotkeys">
-        <Row label="Screenshot capture">
+      <Section title="Hotkey">
+        <Row label="Capture (and stop recording)">
           <HotkeyInput
             value={settings.hotkeyScreenshot}
-            kind="screenshot"
             onChange={(hotkeyScreenshot) => patch({ hotkeyScreenshot })}
           />
         </Row>
-        <Row label="Video capture">
-          <HotkeyInput
-            value={settings.hotkeyVideo}
-            kind="video"
-            onChange={(hotkeyVideo) => patch({ hotkeyVideo })}
-          />
-        </Row>
+        <p className="text-xs text-neutral-500">
+          One key does it all: opens the capture overlay, and stops a recording in progress.
+          Use the Rec button on a selection to start recording.
+        </p>
       </Section>
 
       <Section title="Video">

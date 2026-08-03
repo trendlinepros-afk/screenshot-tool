@@ -33,11 +33,10 @@ function eventToAccelerator(e: React.KeyboardEvent): string | null {
 
 interface Props {
   value: string;
-  kind: 'screenshot' | 'video';
   onChange: (accelerator: string) => void;
 }
 
-export function HotkeyInput({ value, kind, onChange }: Props) {
+export function HotkeyInput({ value, onChange }: Props) {
   const [recording, setRecording] = useState(false);
   const [warning, setWarning] = useState('');
 
@@ -51,7 +50,7 @@ export function HotkeyInput({ value, kind, onChange }: Props) {
     }
     const accelerator = eventToAccelerator(e);
     if (!accelerator) return; // modifier-only press — keep waiting
-    const result = await window.zirtola.validateHotkey(accelerator, kind);
+    const result = await window.zirtola.validateHotkey(accelerator);
     if (!result.ok) {
       setWarning(result.reason ?? 'This hotkey cannot be used.');
       setRecording(false);

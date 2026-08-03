@@ -29,8 +29,6 @@ import {
   getLastStatus,
 } from './updater';
 
-type CaptureMode = 'screenshot' | 'record';
-
 interface RegionRect {
   x: number;
   y: number;
@@ -142,7 +140,7 @@ function prewarmOverlays(): void {
   }
 }
 
-async function startCapture(mode: CaptureMode): Promise<void> {
+async function startCapture(): Promise<void> {
   if (captureActive || recorderWindow) return;
   captureActive = true;
   try {
@@ -153,11 +151,11 @@ async function startCapture(mode: CaptureMode): Promise<void> {
       if (!win || win.isDestroyed()) continue;
       win.setBounds(cap.display.bounds);
       const payload = {
-        mode,
         displayId: cap.display.id,
-        imageDataUrl: cap.imageDataUrl,
+        bitmap: cap.bitmap,
+        bitmapWidth: cap.bitmapWidth,
+        bitmapHeight: cap.bitmapHeight,
         bounds: cap.display.bounds,
-        scaleFactor: cap.display.scaleFactor,
       };
       // The overlay page reloads after each capture; if the hotkey fires again
       // mid-reload, wait for the load so the init message isn't dropped.
@@ -308,18 +306,20 @@ function closeRecorder(): void {
 // Saving
 // ---------------------------------------------------------------------------
 
-async function resolveSavePath(ext: 'png' | 'jpg' | 'mp4'): Promise<string | null> {
-  const settings = getSettings();
+function autoSaveDir(): string | null {
+  const folder = getSettings().autoSaveFolder;
+  return folder && fs.existsSync(folder) ? folder : null;
+}
+
+async function askSavePath(ext: 'png' | 'jpg' | 'mp4'): Promise<string | null> {
   const filename = timestampedFilename(ext);
-  if (settings.autoSaveFolder && fs.existsSync(settings.autoSaveFolder)) {
-    return path.join(settings.autoSaveFolder, filename);
-  }
+  const dir = autoSaveDir();
   const filters =
     ext === 'mp4'
       ? [{ name: 'MP4 Video', extensions: ['mp4'] }]
       : [{ name: ext.toUpperCase() + ' Image', extensions: [ext] }];
   const result = await dialog.showSaveDialog({
-    defaultPath: filename,
+    defaultPath: dir ? path.join(dir, filename) : filename,
     filters,
   });
   return result.canceled || !result.filePath ? null : result.filePath;
@@ -340,11 +340,16 @@ function registerIpc(): void {
     // Hide overlays before any dialog so the frozen screen doesn't block it.
     const image = nativeImage.createFromDataURL(dataUrl);
     closeOverlays();
-    const filePath = await resolveSavePath(format);
+    const settings = getSettings();
+    const dir = autoSaveDir();
+    const filePath = dir
+      ? path.join(dir, timestampedFilename(format))
+      : await askSavePath(format);
     if (!filePath) return null;
-    const buffer =
-      format === 'jpg' ? image.toJPEG(getSettings().jpgQuality) : image.toPNG();
+    const buffer = format === 'jpg' ? image.toJPEG(settings.jpgQuality) : image.toPNG();
     fs.writeFileSync(filePath, buffer);
+    // Optional convenience: auto-saved screenshots also land on the clipboard.
+    if (dir && settings.autoSaveAlsoCopy) clipboard.writeImage(image);
     return filePath;
   });
 
@@ -358,7 +363,9 @@ function registerIpc(): void {
     const tempWebm = path.join(app.getPath('temp'), `zirtola-${Date.now()}.webm`);
     fs.writeFileSync(tempWebm, Buffer.from(buffer));
     try {
-      const outPath = await resolveSavePath('mp4');
+      // Videos always prompt for a destination (defaulting to the auto-save
+      // folder), per the intended workflow.
+      const outPath = await askSavePath('mp4');
       if (!outPath) return null;
       await transcodeToMp4(tempWebm, outPath);
       return outPath;
@@ -374,10 +381,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) => {
     const before = getSettings();
     const next = updateSettings(patch);
-    if (
-      patch.hotkeyScreenshot !== undefined ||
-      patch.hotkeyVideo !== undefined
-    ) {
+    if (patch.hotkeyScreenshot !== undefined) {
       registerHotkeys();
     }
     if (patch.launchOnStartup !== undefined && patch.launchOnStartup !== before.launchOnStartup) {
@@ -397,30 +401,21 @@ function registerIpc(): void {
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
   });
 
-  ipcMain.handle(
-    'settings:validate-hotkey',
-    (_e, accelerator: string, kind: 'screenshot' | 'video') => {
-      const settings = getSettings();
-      const other = kind === 'screenshot' ? settings.hotkeyVideo : settings.hotkeyScreenshot;
-      if (accelerator === other) {
-        return { ok: false, reason: 'This hotkey is already used by the other capture mode.' };
-      }
-      // Probe-register to detect conflicts with other applications. Temporarily
-      // free our own registration of the same accelerator first.
-      const ownedBefore = globalShortcut.isRegistered(accelerator);
-      if (ownedBefore) return { ok: true };
-      let ok = false;
-      try {
-        ok = globalShortcut.register(accelerator, () => {});
-      } catch {
-        return { ok: false, reason: 'Invalid hotkey.' };
-      }
-      if (ok) globalShortcut.unregister(accelerator);
-      return ok
-        ? { ok: true }
-        : { ok: false, reason: 'This hotkey is already in use by another application.' };
+  ipcMain.handle('settings:validate-hotkey', (_e, accelerator: string) => {
+    // Probe-register to detect conflicts with other applications; our own
+    // current registration of the same accelerator is fine.
+    if (globalShortcut.isRegistered(accelerator)) return { ok: true };
+    let ok = false;
+    try {
+      ok = globalShortcut.register(accelerator, () => {});
+    } catch {
+      return { ok: false, reason: 'Invalid hotkey.' };
     }
-  );
+    if (ok) globalShortcut.unregister(accelerator);
+    return ok
+      ? { ok: true }
+      : { ok: false, reason: 'This hotkey is already in use by another application.' };
+  });
 
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('update:check', () => checkForUpdates());
@@ -433,18 +428,26 @@ function registerIpc(): void {
 // Hotkeys
 // ---------------------------------------------------------------------------
 
+/**
+ * One hotkey does both jobs: start a capture, or — while a recording is in
+ * progress — stop it (the recorder renderer finalizes and prompts for a
+ * save location).
+ */
+function hotkeyAction(): void {
+  if (recorderWindow && !recorderWindow.isDestroyed()) {
+    recorderWindow.webContents.send('recorder:stop');
+    return;
+  }
+  startCapture();
+}
+
 function registerHotkeys(): void {
   globalShortcut.unregisterAll();
   const settings = getSettings();
   try {
-    globalShortcut.register(settings.hotkeyScreenshot, () => startCapture('screenshot'));
+    globalShortcut.register(settings.hotkeyScreenshot, hotkeyAction);
   } catch (err) {
     console.error('Failed to register screenshot hotkey:', err);
-  }
-  try {
-    globalShortcut.register(settings.hotkeyVideo, () => startCapture('record'));
-  } catch (err) {
-    console.error('Failed to register video hotkey:', err);
   }
 }
 
@@ -507,8 +510,7 @@ function createTray(): void {
   tray = new Tray(icon);
   tray.setToolTip('Zirtola Shot');
   const menu = Menu.buildFromTemplate([
-    { label: 'Take screenshot', click: () => startCapture('screenshot') },
-    { label: 'Record video', click: () => startCapture('record') },
+    { label: 'Take screenshot / stop recording', click: () => hotkeyAction() },
     { type: 'separator' },
     { label: 'Open auto-save folder', click: () => openAutoSaveFolder() },
     { label: 'Settings', click: () => openSettingsWindow() },
@@ -517,7 +519,7 @@ function createTray(): void {
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
-  tray.on('double-click', () => startCapture('screenshot'));
+  tray.on('double-click', () => hotkeyAction());
 }
 
 function applyLoginItem(): void {

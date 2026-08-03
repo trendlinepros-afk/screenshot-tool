@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('zirtola', {
 
   // recorder control window
   onRecorderInit: (cb: (init: unknown) => void) => subscribe('recorder:init', cb),
+  onRecorderStop: (cb: () => void) => subscribe('recorder:stop', cb),
   saveRecording: (buffer: ArrayBuffer) => ipcRenderer.invoke('record:save', buffer),
   recordingClosed: () => ipcRenderer.send('record:closed'),
 
@@ -26,8 +27,8 @@ contextBridge.exposeInMainWorld('zirtola', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: unknown) => ipcRenderer.invoke('settings:set', patch),
   pickFolder: () => ipcRenderer.invoke('settings:pick-folder'),
-  validateHotkey: (accelerator: string, kind: string) =>
-    ipcRenderer.invoke('settings:validate-hotkey', accelerator, kind),
+  validateHotkey: (accelerator: string) =>
+    ipcRenderer.invoke('settings:validate-hotkey', accelerator),
   getVersion: () => ipcRenderer.invoke('app:version'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   getLastUpdateStatus: () => ipcRenderer.invoke('update:last'),

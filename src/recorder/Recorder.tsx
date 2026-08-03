@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RecorderInit } from '../shared/types';
 
-type Phase = 'loading' | 'ready' | 'recording' | 'paused' | 'saving' | 'error';
+type Phase = 'starting' | 'recording' | 'paused' | 'saving' | 'error';
 
 function pickMimeType(): string {
   const candidates = [
@@ -14,9 +14,11 @@ function pickMimeType(): string {
 }
 
 export function Recorder() {
-  const [phase, setPhase] = useState<Phase>('loading');
+  const [phase, setPhase] = useState<Phase>('starting');
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState('');
+  const phaseRef = useRef<Phase>('starting');
+  phaseRef.current = phase;
 
   const initRef = useRef<RecorderInit | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -30,17 +32,24 @@ export function Recorder() {
   const tickTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const unsub = window.zirtola.onRecorderInit(async (init) => {
+    const unsubInit = window.zirtola.onRecorderInit(async (init) => {
       initRef.current = init;
       try {
         await setup(init);
-        setPhase('ready');
+        // Recording starts the moment the region is confirmed — no extra click.
+        beginRecording();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         setPhase('error');
       }
     });
-    return unsub;
+    // The global screenshot hotkey doubles as "stop recording".
+    const unsubStop = window.zirtola.onRecorderStop(() => stopAndSave());
+    return () => {
+      unsubInit();
+      unsubStop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function setup(init: RecorderInit): Promise<void> {
@@ -159,7 +168,7 @@ export function Recorder() {
     for (const s of rawStreamsRef.current) s.getTracks().forEach((t) => t.stop());
   }
 
-  const onRecord = () => {
+  const beginRecording = () => {
     const recorder = recorderRef.current;
     if (!recorder) return;
     chunksRef.current = [];
@@ -172,19 +181,20 @@ export function Recorder() {
   const onPause = () => {
     const recorder = recorderRef.current;
     if (!recorder) return;
-    if (phase === 'recording') {
+    if (phaseRef.current === 'recording') {
       recorder.pause();
       stopTicker(true);
       setPhase('paused');
-    } else if (phase === 'paused') {
+    } else if (phaseRef.current === 'paused') {
       recorder.resume();
       startTicker();
       setPhase('recording');
     }
   };
 
-  const onStop = () => {
+  const stopAndSave = () => {
     const recorder = recorderRef.current;
+    const phase = phaseRef.current;
     if (!recorder || (phase !== 'recording' && phase !== 'paused')) return;
     setPhase('saving');
     stopTicker(phase === 'recording');
@@ -230,16 +240,11 @@ export function Recorder() {
           </span>
         ) : (
           <>
-            {(phase === 'loading' || phase === 'ready') && (
-              <button
-                className={btn}
-                onClick={onRecord}
-                disabled={phase !== 'ready'}
-                title="Record"
-              >
-                <span className="h-3.5 w-3.5 rounded-full bg-red-500" />
-              </button>
-            )}
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                phase === 'recording' ? 'animate-pulse bg-red-500' : 'bg-neutral-500'
+              }`}
+            />
             {(phase === 'recording' || phase === 'paused') && (
               <button
                 className={btn}
@@ -260,9 +265,9 @@ export function Recorder() {
             )}
             <button
               className={btn}
-              onClick={onStop}
+              onClick={stopAndSave}
               disabled={phase !== 'recording' && phase !== 'paused'}
-              title="Stop and save"
+              title="Stop and save (or press the screenshot hotkey)"
             >
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                 <rect x="5" y="5" width="14" height="14" rx="2" />
@@ -273,7 +278,7 @@ export function Recorder() {
                 phase === 'recording' ? 'text-red-400' : 'text-neutral-300'
               }`}
             >
-              {phase === 'saving' ? 'Saving…' : time}
+              {phase === 'saving' ? 'Saving…' : phase === 'starting' ? '…' : time}
             </span>
           </>
         )}

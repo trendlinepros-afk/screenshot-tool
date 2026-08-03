@@ -2,8 +2,15 @@ import { desktopCapturer, screen, Display } from 'electron';
 
 export interface DisplayCapture {
   display: Display;
-  /** PNG data URL at full physical resolution of the display. */
-  imageDataUrl: string;
+  /**
+   * Raw BGRA bitmap of the display at full physical resolution. Sending the
+   * raw pixels (instead of a PNG data URL) skips a full encode in the main
+   * process and a full decode in the renderer — the difference between the
+   * overlay appearing in ~300ms vs ~1.5s on a 4K screen.
+   */
+  bitmap: Buffer;
+  bitmapWidth: number;
+  bitmapHeight: number;
   /** desktopCapturer source id ("screen:x:y") for live recording. */
   sourceId: string;
 }
@@ -32,21 +39,16 @@ export async function captureAllDisplays(): Promise<DisplayCapture[]> {
       sources.find((s) => s.display_id === String(display.id)) ?? sources[i] ?? sources[0];
     if (!source) continue;
 
-    const physW = Math.round(display.size.width * display.scaleFactor);
-    const physH = Math.round(display.size.height * display.scaleFactor);
-    const image = source.thumbnail.resize({ width: physW, height: physH });
+    // No resize, no PNG encode — hand the renderer the raw pixels and let it
+    // map coordinates against the actual bitmap dimensions.
+    const size = source.thumbnail.getSize();
     results.push({
       display,
-      imageDataUrl: image.toDataURL(),
+      bitmap: source.thumbnail.toBitmap(),
+      bitmapWidth: size.width,
+      bitmapHeight: size.height,
       sourceId: source.id,
     });
   }
   return results;
-}
-
-export function findSourceIdForDisplay(
-  captures: DisplayCapture[],
-  displayId: number
-): string | null {
-  return captures.find((c) => c.display.id === displayId)?.sourceId ?? null;
 }

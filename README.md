@@ -17,9 +17,11 @@ clipboard. That's the whole workflow.
   undo (`Ctrl+Z`). Annotations are rendered into the copied/saved image.
 - **Save to file** — PNG (default) or JPG with a quality slider, named
   `ZirtolaShot_YYYY-MM-DD_HH-mm-ss.png`, into your auto-save folder (or Save As).
-- **Screen recording** — second hotkey (default `Ctrl+PrtScn`), drag a box, and record
-  just those pixels to MP4 (H.264 via bundled ffmpeg) with Record/Pause/Stop controls and
-  an elapsed-time counter. Configurable frame rate, optional system audio and microphone.
+- **Screen recording** — draw a box, hit **Rec** on the action bar, and the screen
+  un-dims while just those pixels record to MP4 (H.264 via bundled ffmpeg). Press the
+  hotkey again (or the stop button) to finish and pick where to save. Pause/resume and
+  an elapsed-time counter included; configurable frame rate, optional system audio and
+  microphone.
 - **System tray app** — lives in the tray, with menu items for screenshot, recording,
   the auto-save folder, settings, update checks, and quit. Single-instance.
 - **Multi-monitor & DPI-aware** — overlays cover every display; captures are pixel-sharp
@@ -43,9 +45,10 @@ The app starts in the system tray.
 | Copy selection | `Ctrl+C` or `Enter` |
 | Cancel capture | `Esc` |
 | Undo annotation | `Ctrl+Z` |
-| Record video | `Ctrl+PrtScn` |
+| Start recording | **Rec** button on the selection |
+| Stop recording | `PrtScn` (same hotkey) |
 
-Both hotkeys are rebindable in **Settings** (tray icon → Settings).
+The hotkey is rebindable in **Settings** (tray icon → Settings).
 
 ## Development
 
