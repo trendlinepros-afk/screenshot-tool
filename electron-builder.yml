@@ -1,0 +1,36 @@
+appId: com.zirtola.shot
+productName: Zirtola Shot
+copyright: Copyright © 2026 Zirtola
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - package.json
+
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+  artifactName: ZirtolaShot-Setup-${version}.${ext}
+
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+
+publish:
+  provider: github
+  owner: trendlinepros-afk
+  repo: screenshot-tool
