@@ -49,7 +49,15 @@ export function Settings() {
   useEffect(() => {
     window.zirtola.getSettings().then(setSettings);
     window.zirtola.getVersion().then(setVersion);
-    return window.zirtola.onUpdateStatus(setUpdate);
+    // A check may have started before this window loaded (tray menu) — pull
+    // the last known status so it isn't lost.
+    window.zirtola.getLastUpdateStatus().then((last) => {
+      if (last) setUpdate((prev) => prev ?? last);
+    });
+    // Merge so latestVersion/releaseNotes survive 'downloading' progress events.
+    return window.zirtola.onUpdateStatus((res) =>
+      setUpdate((prev) => ({ ...(prev ?? {}), ...res }))
+    );
   }, []);
 
   if (!settings) return null;
@@ -188,7 +196,7 @@ export function Settings() {
         <div className="flex items-center justify-between gap-4">
           <button
             className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
-            disabled={update?.status === 'checking'}
+            disabled={update?.status === 'checking' || update?.status === 'downloading'}
             onClick={() => window.zirtola.checkForUpdates()}
           >
             {update?.status === 'checking' ? 'Checking…' : 'Check for updates'}
@@ -202,22 +210,36 @@ export function Settings() {
             </span>
           )}
         </div>
-        {update?.status === 'available' && (
+        {(update?.status === 'available' || update?.status === 'downloading') && (
           <div className="rounded-md border border-brand/40 bg-brand/10 p-3">
             <p className="text-sm font-medium">
-              Version {update.latestVersion} is available (you have {update.currentVersion})
+              Version {update.latestVersion ?? '—'} is available (you have {update.currentVersion})
             </p>
             {update.releaseNotes && (
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs text-neutral-300">
                 {update.releaseNotes}
               </pre>
             )}
-            <button
-              className="mt-2 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-              onClick={() => window.zirtola.downloadUpdate()}
-            >
-              Download &amp; install
-            </button>
+            {update.status === 'downloading' ? (
+              <div className="mt-3">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+                  <div
+                    className="h-full rounded-full bg-brand transition-all"
+                    style={{ width: `${update.percent ?? 0}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-neutral-400">
+                  Downloading… {update.percent ?? 0}%
+                </p>
+              </div>
+            ) : (
+              <button
+                className="mt-2 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                onClick={() => window.zirtola.downloadUpdate()}
+              >
+                Download &amp; install
+              </button>
+            )}
           </div>
         )}
         {update?.status === 'downloaded' && (

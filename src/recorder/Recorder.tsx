@@ -57,7 +57,21 @@ export function Recorder() {
         },
       } as unknown as MediaTrackConstraints,
     };
-    const desktopStream = await navigator.mediaDevices.getUserMedia(constraints);
+    let desktopStream: MediaStream;
+    try {
+      desktopStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      // System-audio loopback can fail on some setups — retry video-only
+      // rather than failing the whole recording.
+      if (init.recordSystemAudio) {
+        desktopStream = await navigator.mediaDevices.getUserMedia({
+          ...constraints,
+          audio: false,
+        });
+      } else {
+        throw err;
+      }
+    }
     rawStreamsRef.current.push(desktopStream);
 
     let micStream: MediaStream | null = null;
@@ -77,18 +91,22 @@ export function Recorder() {
     await video.play();
     videoRef.current = video;
 
-    // Crop canvas at the region's physical pixel size.
-    const scale = init.scaleFactor;
-    const cw = Math.max(2, Math.round(init.region.width * scale));
-    const ch = Math.max(2, Math.round(init.region.height * scale));
+    // Map the CSS-pixel region onto the actual stream resolution. Deriving the
+    // scale from videoWidth (instead of trusting scaleFactor) keeps the crop
+    // correct even if Chromium delivers the stream at a different resolution
+    // than the display's nominal physical size.
+    const kx = video.videoWidth / init.displaySize.width || init.scaleFactor;
+    const ky = video.videoHeight / init.displaySize.height || init.scaleFactor;
+    const cw = Math.max(2, Math.round(init.region.width * kx));
+    const ch = Math.max(2, Math.round(init.region.height * ky));
     const canvas = document.createElement('canvas');
     canvas.width = cw;
     canvas.height = ch;
     canvasRef.current = canvas;
     const ctx = canvas.getContext('2d')!;
 
-    const sx = Math.round(init.region.x * scale);
-    const sy = Math.round(init.region.y * scale);
+    const sx = Math.round(init.region.x * kx);
+    const sy = Math.round(init.region.y * ky);
     const draw = () => {
       if (video.videoWidth === 0 || video.videoHeight === 0) return;
       ctx.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
@@ -176,8 +194,11 @@ export function Recorder() {
       const buffer = await blob.arrayBuffer();
       try {
         await window.zirtola.saveRecording(buffer);
-      } finally {
         window.zirtola.recordingClosed();
+      } catch (err) {
+        // Keep the bar open so the failure is visible instead of vanishing.
+        setError(err instanceof Error ? err.message : 'Saving the recording failed');
+        setPhase('error');
       }
     };
     recorder.stop();
@@ -257,7 +278,7 @@ export function Recorder() {
           </>
         )}
         <div className="h-5 w-px bg-white/15" />
-        <button className={btn} onClick={onCancel} title="Cancel">
+        <button className={btn} onClick={onCancel} disabled={phase === 'saving'} title="Cancel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />

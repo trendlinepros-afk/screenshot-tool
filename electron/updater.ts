@@ -1,23 +1,37 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as https from 'https';
 
 export interface UpdateCheckResult {
-  status: 'checking' | 'up-to-date' | 'available' | 'downloaded' | 'error';
+  status: 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'error';
   currentVersion: string;
   latestVersion?: string;
   releaseNotes?: string;
   message?: string;
+  /** Download progress 0–100, present while status is 'downloading'. */
+  percent?: number;
 }
 
 const GITHUB_OWNER = 'trendlinepros-afk';
 const GITHUB_REPO = 'screenshot-tool';
+const RELEASES_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 
 let statusTarget: (() => BrowserWindow | null) | null = null;
+let lastResult: UpdateCheckResult | null = null;
 
 function send(result: UpdateCheckResult) {
+  lastResult = result;
   const win = statusTarget?.();
   if (win && !win.isDestroyed()) win.webContents.send('update:status', result);
+}
+
+/**
+ * Last status we emitted. The settings renderer pulls this on mount, so a
+ * check kicked off before the window finished loading (e.g. from the tray
+ * menu) is never lost.
+ */
+export function getLastStatus(): UpdateCheckResult | null {
+  return lastResult;
 }
 
 export function initUpdater(getSettingsWindow: () => BrowserWindow | null): void {
@@ -35,6 +49,13 @@ export function initUpdater(getSettingsWindow: () => BrowserWindow | null): void
   });
   autoUpdater.on('update-not-available', () => {
     send({ status: 'up-to-date', currentVersion: app.getVersion() });
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    send({
+      status: 'downloading',
+      currentVersion: app.getVersion(),
+      percent: Math.round(progress.percent),
+    });
   });
   autoUpdater.on('update-downloaded', (info) => {
     send({
@@ -80,8 +101,9 @@ function fetchLatestRelease(): Promise<{ tag: string; notes: string } | null> {
 }
 
 function compareVersions(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split('.').map(Number);
-  const pb = b.replace(/^v/, '').split('.').map(Number);
+  // parseInt tolerates prerelease suffixes like "0.2.0-beta.1"
+  const pa = a.replace(/^v/, '').split('.').map((s) => parseInt(s, 10) || 0);
+  const pb = b.replace(/^v/, '').split('.').map((s) => parseInt(s, 10) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const d = (pa[i] ?? 0) - (pb[i] ?? 0);
     if (d !== 0) return d;
@@ -136,6 +158,11 @@ export async function checkForUpdates(): Promise<void> {
 }
 
 export async function downloadUpdate(): Promise<void> {
+  if (!app.isPackaged) {
+    // Dev builds can't install in place — hand off to the releases page.
+    shell.openExternal(RELEASES_URL);
+    return;
+  }
   try {
     await autoUpdater.downloadUpdate();
   } catch (err) {

@@ -41,7 +41,7 @@ export function HotkeyInput({ value, kind, onChange }: Props) {
   const [recording, setRecording] = useState(false);
   const [warning, setWarning] = useState('');
 
-  const onKeyDown = async (e: React.KeyboardEvent) => {
+  const capture = async (e: React.KeyboardEvent) => {
     if (!recording) return;
     e.preventDefault();
     e.stopPropagation();
@@ -65,7 +65,11 @@ export function HotkeyInput({ value, kind, onChange }: Props) {
   return (
     <div>
       <button
-        onKeyDown={onKeyDown}
+        onKeyDown={capture}
+        // On Windows, PrtScn only fires a keyup — capture it there too.
+        onKeyUp={(e) => {
+          if (e.code === 'PrintScreen') capture(e);
+        }}
         onClick={() => {
           setWarning('');
           setRecording(true);

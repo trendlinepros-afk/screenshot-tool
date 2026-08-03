@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('zirtola', {
     ipcRenderer.invoke('settings:validate-hotkey', accelerator, kind),
   getVersion: () => ipcRenderer.invoke('app:version'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  getLastUpdateStatus: () => ipcRenderer.invoke('update:last'),
   onUpdateStatus: (cb: (result: unknown) => void) => subscribe('update:status', cb),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   quitAndInstall: () => ipcRenderer.send('update:install'),

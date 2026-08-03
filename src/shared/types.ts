@@ -36,6 +36,8 @@ export interface RecorderInit {
   displayId: number;
   /** Region in CSS pixels, relative to the display. */
   region: RegionRect;
+  /** Display size in CSS pixels, for mapping the region onto the stream. */
+  displaySize: { width: number; height: number };
   scaleFactor: number;
   fps: number;
   recordSystemAudio: boolean;
@@ -43,11 +45,13 @@ export interface RecorderInit {
 }
 
 export interface UpdateCheckResult {
-  status: 'checking' | 'up-to-date' | 'available' | 'downloaded' | 'error';
+  status: 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'error';
   currentVersion: string;
   latestVersion?: string;
   releaseNotes?: string;
   message?: string;
+  /** Download progress 0–100, present while status is 'downloading'. */
+  percent?: number;
 }
 
 export interface HotkeyValidation {
@@ -76,6 +80,7 @@ export interface ZirtolaApi {
   validateHotkey(accelerator: string, kind: 'screenshot' | 'video'): Promise<HotkeyValidation>;
   getVersion(): Promise<string>;
   checkForUpdates(): Promise<void>;
+  getLastUpdateStatus(): Promise<UpdateCheckResult | null>;
   onUpdateStatus(cb: (result: UpdateCheckResult) => void): () => void;
   downloadUpdate(): Promise<void>;
   quitAndInstall(): void;

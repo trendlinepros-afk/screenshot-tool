@@ -48,6 +48,9 @@ export function Overlay() {
     null
   );
   const [busy, setBusy] = useState(false);
+  // Geometry drags (draw/move/resize) hide the handles and toolbars; annotate
+  // drags keep the toolbars visible. State (not just a ref) so the UI updates.
+  const [dragKind, setDragKind] = useState<null | 'geometry' | 'annotate'>(null);
 
   const dragRef = useRef<Drag | null>(null);
   const liveShapeRef = useRef<Shape | null>(null);
@@ -65,6 +68,7 @@ export function Overlay() {
       setTool(null);
       setEditingText(null);
       setBusy(false);
+      setDragKind(null);
       dragRef.current = null;
       liveShapeRef.current = null;
       const img = new Image();
@@ -228,6 +232,7 @@ export function Overlay() {
     const handle = target.dataset.handle as Handle | undefined;
     if (handle && selection) {
       dragRef.current = { kind: 'resize', handle, orig: selection };
+      setDragKind('geometry');
       return;
     }
 
@@ -243,11 +248,13 @@ export function Overlay() {
           : { tool, from: p, to: p, color, width };
       dragRef.current = { kind: 'annotate', shape };
       liveShapeRef.current = shape;
+      setDragKind('annotate');
       return;
     }
 
     if (selection && !tool && hitSelection(p, selection)) {
       dragRef.current = { kind: 'move', startX: p.x, startY: p.y, orig: selection };
+      setDragKind('geometry');
       return;
     }
 
@@ -255,60 +262,73 @@ export function Overlay() {
     setShapes([]);
     setSelection({ x: p.x, y: p.y, width: 0, height: 0 });
     dragRef.current = { kind: 'new', startX: p.x, startY: p.y };
+    setDragKind('geometry');
   };
 
-  const onMouseMove = (e: React.MouseEvent) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const p = {
-      x: Math.max(0, Math.min(e.clientX, window.innerWidth)),
-      y: Math.max(0, Math.min(e.clientY, window.innerHeight)),
+  // Move/up live on window so a drag ends cleanly even when the button is
+  // released outside this display's overlay window.
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const p = {
+        x: Math.max(0, Math.min(e.clientX, window.innerWidth)),
+        y: Math.max(0, Math.min(e.clientY, window.innerHeight)),
+      };
+      switch (drag.kind) {
+        case 'new':
+          setSelection(normalizeRect({ x: drag.startX, y: drag.startY }, p));
+          break;
+        case 'move': {
+          const next = {
+            ...drag.orig,
+            x: drag.orig.x + (e.clientX - drag.startX),
+            y: drag.orig.y + (e.clientY - drag.startY),
+          };
+          setSelection(clampRect(next, window.innerWidth, window.innerHeight));
+          break;
+        }
+        case 'resize': {
+          const { handle: h, orig } = drag;
+          const left = h.includes('w') ? p.x : orig.x;
+          const right = h.includes('e') ? p.x : orig.x + orig.width;
+          const top = h.includes('n') ? p.y : orig.y;
+          const bottom = h.includes('s') ? p.y : orig.y + orig.height;
+          setSelection(normalizeRect({ x: left, y: top }, { x: right, y: bottom }));
+          break;
+        }
+        case 'annotate': {
+          const shape = drag.shape;
+          if (shape.tool === 'pen') shape.points.push(p);
+          else if (shape.tool !== 'text') shape.to = p;
+          liveShapeRef.current = shape;
+          redraw();
+          break;
+        }
+      }
     };
-    switch (drag.kind) {
-      case 'new':
-        setSelection(normalizeRect({ x: drag.startX, y: drag.startY }, p));
-        break;
-      case 'move': {
-        const next = {
-          ...drag.orig,
-          x: drag.orig.x + (e.clientX - drag.startX),
-          y: drag.orig.y + (e.clientY - drag.startY),
-        };
-        setSelection(clampRect(next, window.innerWidth, window.innerHeight));
-        break;
-      }
-      case 'resize': {
-        const { handle: h, orig } = drag;
-        const left = h.includes('w') ? p.x : orig.x;
-        const right = h.includes('e') ? p.x : orig.x + orig.width;
-        const top = h.includes('n') ? p.y : orig.y;
-        const bottom = h.includes('s') ? p.y : orig.y + orig.height;
-        setSelection(normalizeRect({ x: left, y: top }, { x: right, y: bottom }));
-        break;
-      }
-      case 'annotate': {
-        const shape = drag.shape;
-        if (shape.tool === 'pen') shape.points.push(p);
-        else if (shape.tool !== 'text') shape.to = p;
-        liveShapeRef.current = shape;
-        redraw();
-        break;
-      }
-    }
-  };
 
-  const onMouseUp = () => {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    if (!drag) return;
-    if (drag.kind === 'annotate') {
-      const shape = liveShapeRef.current;
-      liveShapeRef.current = null;
-      if (shape) setShapes((prev) => [...prev, shape]);
-    } else if (drag.kind === 'new') {
-      setSelection((sel) => (sel && sel.width >= 4 && sel.height >= 4 ? sel : null));
-    }
-  };
+    const onMouseUp = () => {
+      const drag = dragRef.current;
+      dragRef.current = null;
+      setDragKind(null);
+      if (!drag) return;
+      if (drag.kind === 'annotate') {
+        const shape = liveShapeRef.current;
+        liveShapeRef.current = null;
+        if (shape) setShapes((prev) => [...prev, shape]);
+      } else if (drag.kind === 'new') {
+        setSelection((sel) => (sel && sel.width >= 4 && sel.height >= 4 ? sel : null));
+      }
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [redraw]);
 
   if (!init) return <div className="h-full w-full bg-neutral-900" />;
 
@@ -326,8 +346,6 @@ export function Overlay() {
       className="relative h-full w-full overflow-hidden"
       style={{ cursor }}
       onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
     >
       {/* frozen screen, dimmed */}
       <img
@@ -344,6 +362,7 @@ export function Overlay() {
           <div
             className="absolute overflow-hidden"
             style={{
+              cursor: tool ? 'crosshair' : 'move',
               left: sel.x,
               top: sel.y,
               width: sel.width,
@@ -384,7 +403,7 @@ export function Overlay() {
 
       {/* resize handles */}
       {sel &&
-        !dragRef.current &&
+        !dragKind &&
         HANDLES.map(({ name, cursor: hc }) => {
           const cx = name.includes('w') ? sel.x : name.includes('e') ? sel.x + sel.width : sel.x + sel.width / 2;
           const cy = name.includes('n') ? sel.y : name.includes('s') ? sel.y + sel.height : sel.y + sel.height / 2;
@@ -409,6 +428,9 @@ export function Overlay() {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               commitPendingText();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              setEditingText(null);
             }
             e.stopPropagation();
           }}
@@ -425,7 +447,7 @@ export function Overlay() {
         />
       )}
 
-      {sel && sel.width >= 4 && init.mode === 'screenshot' && (
+      {sel && sel.width >= 4 && dragKind !== 'geometry' && init.mode === 'screenshot' && (
         <AnnotationToolbar
           selection={sel}
           tool={tool}
@@ -436,7 +458,7 @@ export function Overlay() {
         />
       )}
 
-      {sel && sel.width >= 4 && (
+      {sel && sel.width >= 4 && dragKind !== 'geometry' && (
         <ActionBar
           selection={sel}
           mode={init.mode}

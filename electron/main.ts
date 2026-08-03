@@ -26,6 +26,7 @@ import {
   checkForUpdates,
   downloadUpdate,
   quitAndInstall,
+  getLastStatus,
 } from './updater';
 
 type CaptureMode = 'screenshot' | 'record';
@@ -281,6 +282,7 @@ function openRecorder(displayId: number, region: RegionRect): void {
       sourceId: capture.sourceId,
       displayId,
       region,
+      displaySize: { width: display.size.width, height: display.size.height },
       scaleFactor: display.scaleFactor,
       fps: settings.videoFps,
       recordSystemAudio: settings.recordSystemAudio,
@@ -422,6 +424,7 @@ function registerIpc(): void {
 
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('update:check', () => checkForUpdates());
+  ipcMain.handle('update:last', () => getLastStatus());
   ipcMain.handle('update:download', () => downloadUpdate());
   ipcMain.on('update:install', () => quitAndInstall());
 }
@@ -473,6 +476,23 @@ function openSettingsWindow(): void {
   });
 }
 
+/**
+ * Tray-menu update check: the settings window may not exist yet, and status
+ * messages sent before its renderer loads would be dropped. Start the check
+ * only once the page has loaded (the renderer additionally pulls the last
+ * status on mount, covering the remaining races).
+ */
+function checkForUpdatesFromTray(): void {
+  openSettingsWindow();
+  const win = settingsWindow;
+  if (!win) return;
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', () => checkForUpdates());
+  } else {
+    checkForUpdates();
+  }
+}
+
 function openAutoSaveFolder(): void {
   const folder = getSettings().autoSaveFolder;
   if (folder && fs.existsSync(folder)) {
@@ -492,7 +512,7 @@ function createTray(): void {
     { type: 'separator' },
     { label: 'Open auto-save folder', click: () => openAutoSaveFolder() },
     { label: 'Settings', click: () => openSettingsWindow() },
-    { label: 'Check for updates', click: () => { openSettingsWindow(); checkForUpdates(); } },
+    { label: 'Check for updates', click: () => checkForUpdatesFromTray() },
     { type: 'separator' },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
   ]);
