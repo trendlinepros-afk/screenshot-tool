@@ -220,6 +220,12 @@ export function Overlay() {
         setShapes((prev) => prev.slice(0, -1));
         return;
       }
+      if (e.key === 's' && e.ctrlKey) {
+        e.preventDefault();
+        if (!stateRef.current.selection || !cfg) return;
+        doSave();
+        return;
+      }
       if ((e.key === 'c' && e.ctrlKey) || e.key === 'Enter') {
         e.preventDefault();
         if (!stateRef.current.selection || !cfg) return;
@@ -228,7 +234,7 @@ export function Overlay() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [doCopy, doStartRecording]);
+  }, [doCopy, doSave, doStartRecording]);
 
   // ---- mouse --------------------------------------------------------------
   const hitSelection = (p: Point, sel: RegionRect | null): boolean =>

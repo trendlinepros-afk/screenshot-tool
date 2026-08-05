@@ -1,7 +1,7 @@
 {
   "name": "zirtola-shot",
   "productName": "Zirtola Shot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Lightshot-style screenshot and screen-recording tool for Windows",
   "author": "Zirtola",
   "license": "MIT",

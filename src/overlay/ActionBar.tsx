@@ -31,7 +31,7 @@ export function ActionBar({ selection, busy, onCopy, onSave, onRecord, onCancel 
       style={{ left, top, height: BAR_H }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <button className={btn} onClick={onSave} disabled={busy} title="Save to file">
+      <button className={btn} onClick={onSave} disabled={busy} title="Save to file (Ctrl+S)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
           <polyline points="17 21 17 13 7 13 7 21" />

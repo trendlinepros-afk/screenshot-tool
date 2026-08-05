@@ -43,6 +43,7 @@ The app starts in the system tray.
 | --- | --- |
 | Take screenshot | `PrtScn` |
 | Copy selection | `Ctrl+C` or `Enter` |
+| Save selection | `Ctrl+S` |
 | Cancel capture | `Esc` |
 | Undo annotation | `Ctrl+Z` |
 | Start recording | **Rec** button on the selection |
