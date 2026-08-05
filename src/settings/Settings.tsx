@@ -110,16 +110,6 @@ export function Settings() {
             )}
           </div>
         </Row>
-        {settings.autoSaveFolder && (
-          <Row label="Also copy to clipboard when auto-saving">
-            <input
-              type="checkbox"
-              checked={settings.autoSaveAlsoCopy}
-              onChange={(e) => patch({ autoSaveAlsoCopy: e.target.checked })}
-              className="h-4 w-4 accent-brand"
-            />
-          </Row>
-        )}
         <Row label="Image format">
           <div className="flex items-center gap-2">
             {(['png', 'jpg'] as const).map((fmt) => (
@@ -149,6 +139,23 @@ export function Settings() {
             />
           </Row>
         )}
+      </Section>
+
+      <Section title="Copying">
+        <Row label="Also save copied screenshots to the auto-save folder">
+          <input
+            type="checkbox"
+            checked={settings.copyAlsoSave}
+            disabled={!settings.autoSaveFolder}
+            onChange={(e) => patch({ copyAlsoSave: e.target.checked })}
+            className="h-4 w-4 accent-brand disabled:opacity-40"
+          />
+        </Row>
+        <p className="text-xs text-neutral-500">
+          {settings.autoSaveFolder
+            ? 'When enabled, Copy (or Ctrl+C) puts the screenshot on your clipboard and saves a file too.'
+            : 'Set an auto-save folder above to enable this.'}
+        </p>
       </Section>
 
       <Section title="Hotkey">

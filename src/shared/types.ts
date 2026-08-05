@@ -1,7 +1,7 @@
 export interface AppSettings {
   autoSaveFolder: string | null;
-  /** Also copy to the clipboard whenever a screenshot is auto-saved. */
-  autoSaveAlsoCopy: boolean;
+  /** Also save copied screenshots to the auto-save folder. */
+  copyAlsoSave: boolean;
   /** One hotkey: opens capture, and stops an in-progress recording. */
   hotkeyScreenshot: string;
   imageFormat: 'png' | 'jpg';

@@ -4,8 +4,8 @@ import * as path from 'path';
 
 export interface AppSettings {
   autoSaveFolder: string | null;
-  /** Also copy to the clipboard whenever a screenshot is auto-saved. */
-  autoSaveAlsoCopy: boolean;
+  /** Also save copied screenshots to the auto-save folder. */
+  copyAlsoSave: boolean;
   /** One hotkey: opens capture, and stops an in-progress recording. */
   hotkeyScreenshot: string;
   imageFormat: 'png' | 'jpg';
@@ -18,7 +18,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   autoSaveFolder: null,
-  autoSaveAlsoCopy: true,
+  copyAlsoSave: false,
   hotkeyScreenshot: 'PrintScreen',
   imageFormat: 'png',
   jpgQuality: 90,

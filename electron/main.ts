@@ -334,6 +334,18 @@ function registerIpc(): void {
     const image = nativeImage.createFromDataURL(dataUrl);
     clipboard.writeImage(image);
     closeOverlays();
+    // Optional: copied screenshots also land in the auto-save folder.
+    const settings = getSettings();
+    const dir = autoSaveDir();
+    if (settings.copyAlsoSave && dir) {
+      const format = settings.imageFormat;
+      const buffer = format === 'jpg' ? image.toJPEG(settings.jpgQuality) : image.toPNG();
+      try {
+        fs.writeFileSync(path.join(dir, timestampedFilename(format)), buffer);
+      } catch (err) {
+        console.error('Copy-also-save failed:', err);
+      }
+    }
   });
 
   ipcMain.handle('image:save', async (_e, dataUrl: string, format: 'png' | 'jpg') => {
@@ -348,8 +360,6 @@ function registerIpc(): void {
     if (!filePath) return null;
     const buffer = format === 'jpg' ? image.toJPEG(settings.jpgQuality) : image.toPNG();
     fs.writeFileSync(filePath, buffer);
-    // Optional convenience: auto-saved screenshots also land on the clipboard.
-    if (dir && settings.autoSaveAlsoCopy) clipboard.writeImage(image);
     return filePath;
   });
 
