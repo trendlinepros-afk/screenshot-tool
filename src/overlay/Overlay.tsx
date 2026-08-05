@@ -44,6 +44,9 @@ export function Overlay() {
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [tool, setTool] = useState<ToolName | null>(null);
   const [color, setColor] = useState('#ef4444');
+  const [strokeWidth, setStrokeWidth] = useState(3);
+  /** Transient "N px" hint shown near the cursor while scrolling thickness. */
+  const [widthHint, setWidthHint] = useState<{ x: number; y: number } | null>(null);
   const [editingText, setEditingText] = useState<{ x: number; y: number; value: string } | null>(
     null
   );
@@ -57,8 +60,9 @@ export function Overlay() {
   /** Visible canvas holding the frozen screen at full physical resolution. */
   const screenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stateRef = useRef({ selection, shapes, tool, color, init, editingText, busy });
-  stateRef.current = { selection, shapes, tool, color, init, editingText, busy };
+  const stateRef = useRef({ selection, shapes, tool, color, strokeWidth, init, editingText, busy });
+  stateRef.current = { selection, shapes, tool, color, strokeWidth, init, editingText, busy };
+  const widthHintTimer = useRef<number | null>(null);
 
   // ---- init from main process --------------------------------------------
   useEffect(() => {
@@ -162,10 +166,17 @@ export function Overlay() {
 
   /** Commit any in-progress text edit; returns the committed shape (if any). */
   const commitPendingText = useCallback((): Shape | null => {
-    const { editingText: et, color: c } = stateRef.current;
+    const { editingText: et, color: c, strokeWidth: sw } = stateRef.current;
     setEditingText(null);
     if (et && et.value.trim()) {
-      const shape: Shape = { tool: 'text', x: et.x, y: et.y, text: et.value, color: c, fontSize: 18 };
+      const shape: Shape = {
+        tool: 'text',
+        x: et.x,
+        y: et.y,
+        text: et.value,
+        color: c,
+        fontSize: sw * 6,
+      };
       setShapes((prev) => [...prev, shape]);
       return shape;
     }
@@ -267,7 +278,7 @@ export function Overlay() {
         setEditingText({ x: p.x, y: p.y, value: '' });
         return;
       }
-      const width = 3;
+      const width = strokeWidth;
       const shape: Shape =
         tool === 'pen'
           ? { tool: 'pen', points: [p], color, width }
@@ -354,6 +365,31 @@ export function Overlay() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
+  }, [redraw]);
+
+  // Mouse wheel adjusts stroke thickness — including live, mid-draw.
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      const { tool: activeTool, editingText: et } = stateRef.current;
+      const drag = dragRef.current;
+      const annotating = drag?.kind === 'annotate';
+      if (!activeTool && !annotating && !et) return;
+      e.preventDefault();
+      setStrokeWidth((prev) => {
+        const next = Math.max(1, Math.min(24, prev + (e.deltaY < 0 ? 1 : -1)));
+        if (annotating && drag.shape.tool !== 'text') {
+          drag.shape.width = next;
+          liveShapeRef.current = drag.shape;
+          redraw();
+        }
+        return next;
+      });
+      setWidthHint({ x: e.clientX, y: e.clientY });
+      if (widthHintTimer.current !== null) clearTimeout(widthHintTimer.current);
+      widthHintTimer.current = window.setTimeout(() => setWidthHint(null), 800);
+    };
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => window.removeEventListener('wheel', onWheel);
   }, [redraw]);
 
   const sel = selection;
@@ -461,7 +497,7 @@ export function Overlay() {
             left: editingText.x,
             top: editingText.y,
             color,
-            fontSize: 18,
+            fontSize: strokeWidth * 6,
             lineHeight: 1.25,
             fontFamily: '"Segoe UI", system-ui, sans-serif',
           }}
@@ -488,6 +524,16 @@ export function Overlay() {
           onRecord={doStartRecording}
           onCancel={() => window.zirtola.cancelCapture()}
         />
+      )}
+
+      {/* stroke-thickness hint while scrolling */}
+      {widthHint && (
+        <div
+          className="pointer-events-none absolute z-40 rounded bg-neutral-900/90 px-1.5 py-0.5 font-mono text-xs text-white shadow"
+          style={{ left: widthHint.x + 14, top: widthHint.y + 14 }}
+        >
+          {strokeWidth} px
+        </div>
       )}
 
       {!sel && (
