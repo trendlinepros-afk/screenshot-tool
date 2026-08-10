@@ -259,6 +259,11 @@ export function Overlay() {
     if (e.button !== 0 || busy) return;
     const target = e.target as HTMLElement;
     if (target.closest('[data-ui]')) return; // toolbar/action-bar clicks
+    // Without this, the browser's default focus-on-mousedown runs AFTER React
+    // mounts the text editor (discrete events flush synchronously), moving
+    // focus to the underlying div and instantly blurring — and thereby
+    // closing — the just-opened textarea.
+    e.preventDefault();
     const p = { x: e.clientX, y: e.clientY };
 
     if (editingText) {
