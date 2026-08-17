@@ -47,6 +47,7 @@ let recorderBorderWindow: BrowserWindow | null = null;
 const overlayWindows = new Map<number, BrowserWindow>();
 let captureActive = false;
 let currentCaptures: DisplayCapture[] = [];
+let cursorDisplayId: number | null = null;
 let quitting = false;
 
 // ---------------------------------------------------------------------------
@@ -140,12 +141,28 @@ function prewarmOverlays(): void {
   }
 }
 
+/**
+ * Reveal an overlay window once its renderer has painted the frozen screen.
+ * Showing any earlier flashes the window's dark background across every
+ * monitor before the screenshot appears.
+ */
+function showOverlayWindow(win: BrowserWindow, displayId: number): void {
+  if (!captureActive || win.isDestroyed() || win.isVisible()) return;
+  if (displayId === cursorDisplayId) {
+    win.show();
+    win.focus();
+  } else {
+    win.showInactive();
+  }
+}
+
 async function startCapture(): Promise<void> {
   if (captureActive || recorderWindow) return;
   captureActive = true;
   try {
     currentCaptures = await captureAllDisplays();
     prewarmOverlays();
+    cursorDisplayId = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).id;
     for (const cap of currentCaptures) {
       const win = overlayWindows.get(cap.display.id);
       if (!win || win.isDestroyed()) continue;
@@ -166,11 +183,18 @@ async function startCapture(): Promise<void> {
       } else {
         win.webContents.send('overlay:init', payload);
       }
-      win.show();
+      // Shown when the renderer reports 'overlay:ready' (painted).
     }
-    // Focus the overlay on the display with the cursor so keys work there.
-    const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    overlayWindows.get(cursorDisplay.id)?.focus();
+    // Fallback: never leave the hotkey unresponsive if a ready signal is lost.
+    setTimeout(() => {
+      if (!captureActive) return;
+      for (const cap of currentCaptures) {
+        const win = overlayWindows.get(cap.display.id);
+        if (win && !win.isDestroyed() && !win.isVisible()) {
+          showOverlayWindow(win, cap.display.id);
+        }
+      }
+    }, 500);
   } catch (err) {
     captureActive = false;
     console.error('Capture failed:', err);
@@ -393,6 +417,15 @@ function registerIpc(): void {
     } catch (err) {
       cleanup();
       throw err;
+    }
+  });
+
+  ipcMain.on('overlay:ready', (e) => {
+    for (const [displayId, win] of overlayWindows) {
+      if (!win.isDestroyed() && win.webContents === e.sender) {
+        showOverlayWindow(win, displayId);
+        break;
+      }
     }
   });
 

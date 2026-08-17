@@ -98,6 +98,11 @@ export function Overlay() {
     }
     const ctx = canvas.getContext('2d')!;
     ctx.putImageData(new ImageData(new Uint8ClampedArray(out.buffer), w, h), 0, 0);
+    // Tell main we've painted (double rAF = after compositing) so the window
+    // is revealed with the frozen screen already on it — no dark flash.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => window.zirtola.overlayReady())
+    );
   }, [init]);
 
   // ---- annotation canvas redraw ------------------------------------------
