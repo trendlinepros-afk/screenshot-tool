@@ -65,6 +65,7 @@ export interface ZirtolaApi {
   overlayReady(): void;
   copyImage(dataUrl: string): Promise<void>;
   saveImage(dataUrl: string, format: 'png' | 'jpg'): Promise<string | null>;
+  printImage(dataUrl: string): Promise<void>;
   cancelCapture(): void;
   startRecording(displayId: number, region: RegionRect): void;
 

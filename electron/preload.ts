@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('zirtola', {
   copyImage: (dataUrl: string) => ipcRenderer.invoke('image:copy', dataUrl),
   saveImage: (dataUrl: string, format: 'png' | 'jpg') =>
     ipcRenderer.invoke('image:save', dataUrl, format),
+  printImage: (dataUrl: string) => ipcRenderer.invoke('image:print', dataUrl),
   cancelCapture: () => ipcRenderer.send('capture:cancel'),
   startRecording: (displayId: number, region: unknown) =>
     ipcRenderer.send('record:start', displayId, region),

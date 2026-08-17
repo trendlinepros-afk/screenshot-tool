@@ -202,6 +202,15 @@ export function Overlay() {
     await window.zirtola.saveImage(dataUrl, settings.imageFormat);
   }, [commitPendingText, exportImage]);
 
+  const doPrint = useCallback(() => {
+    if (stateRef.current.busy) return;
+    const extra = commitPendingText();
+    const dataUrl = exportImage('png', 100, extra);
+    if (!dataUrl) return;
+    setBusy(true);
+    window.zirtola.printImage(dataUrl);
+  }, [commitPendingText, exportImage]);
+
   const doStartRecording = useCallback(() => {
     const { selection: sel, init: cfg } = stateRef.current;
     if (!sel || !cfg || sel.width < 8 || sel.height < 8) return;
@@ -237,6 +246,12 @@ export function Overlay() {
         doSave();
         return;
       }
+      if (e.key === 'p' && e.ctrlKey) {
+        e.preventDefault();
+        if (!stateRef.current.selection || !cfg) return;
+        doPrint();
+        return;
+      }
       if ((e.key === 'c' && e.ctrlKey) || e.key === 'Enter') {
         e.preventDefault();
         if (!stateRef.current.selection || !cfg) return;
@@ -245,7 +260,7 @@ export function Overlay() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [doCopy, doSave, doStartRecording]);
+  }, [doCopy, doSave, doPrint, doStartRecording]);
 
   // ---- mouse --------------------------------------------------------------
   const hitSelection = (p: Point, sel: RegionRect | null): boolean =>
@@ -526,6 +541,7 @@ export function Overlay() {
           busy={busy}
           onCopy={doCopy}
           onSave={doSave}
+          onPrint={doPrint}
           onRecord={doStartRecording}
           onCancel={() => window.zirtola.cancelCapture()}
         />

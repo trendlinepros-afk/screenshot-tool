@@ -5,13 +5,14 @@ interface Props {
   busy: boolean;
   onCopy: () => void;
   onSave: () => void;
+  onPrint: () => void;
   onRecord: () => void;
   onCancel: () => void;
 }
 
-export function ActionBar({ selection, busy, onCopy, onSave, onRecord, onCancel }: Props) {
+export function ActionBar({ selection, busy, onCopy, onSave, onPrint, onRecord, onCancel }: Props) {
   const BAR_H = 36;
-  const BAR_W = 270;
+  const BAR_W = 340;
 
   // horizontal bar under the bottom edge; flip above/inside if no room
   let top = selection.y + selection.height + 8;
@@ -45,6 +46,14 @@ export function ActionBar({ selection, busy, onCopy, onSave, onRecord, onCancel 
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
         Copy
+      </button>
+      <button className={btn} onClick={onPrint} disabled={busy} title="Print (Ctrl+P)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+        Print
       </button>
       <button
         className={btn}

@@ -363,6 +363,39 @@ function registerIpc(): void {
     return filePath;
   });
 
+  ipcMain.handle('image:print', async (_e, dataUrl: string) => {
+    const image = nativeImage.createFromDataURL(dataUrl);
+    closeOverlays();
+    // Stage the image + a tiny host page as temp files (data: URLs have size
+    // limits and can't reference file:// images), then print from a hidden
+    // window via the system print dialog.
+    const stamp = Date.now();
+    const pngPath = path.join(app.getPath('temp'), `zirtola-print-${stamp}.png`);
+    const htmlPath = path.join(app.getPath('temp'), `zirtola-print-${stamp}.html`);
+    fs.writeFileSync(pngPath, image.toPNG());
+    fs.writeFileSync(
+      htmlPath,
+      `<!doctype html><html><head><meta charset="utf-8"><style>
+        @page { margin: 1cm; }
+        html, body { margin: 0; padding: 0; }
+        img { width: 100%; }
+      </style></head><body><img src="zirtola-print-${stamp}.png"></body></html>`
+    );
+    const printWin = new BrowserWindow({ show: false });
+    const cleanup = () => {
+      printWin.destroy();
+      fs.rmSync(pngPath, { force: true });
+      fs.rmSync(htmlPath, { force: true });
+    };
+    try {
+      await printWin.loadFile(htmlPath);
+      printWin.webContents.print({ silent: false, printBackground: true }, () => cleanup());
+    } catch (err) {
+      cleanup();
+      throw err;
+    }
+  });
+
   ipcMain.on('capture:cancel', () => closeOverlays());
 
   ipcMain.on('record:start', (_e, displayId: number, region: RegionRect) => {
